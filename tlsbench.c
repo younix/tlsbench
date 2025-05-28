@@ -269,7 +269,6 @@ main(int argc, char *argv[])
  	 */
 	memset(&sin, 0, sizeof sin);
 	sin.sin_family = AF_INET;
-	sin.sin_len = sizeof sin;
 	sin.sin_port = htons(strtonum(port, 1, USHRT_MAX, &errstr));
 	if (errstr != NULL)
 		errx(1, "invalid port number: %s: %s", errstr, port);
