@@ -4,6 +4,7 @@
 
 #include <err.h>
 #include <limits.h>
+#include <signal.h>
 #include <stdbool.h>
 #include <stdio.h>
 #include <string.h>
@@ -18,6 +19,15 @@ struct server {
 	struct tls_config	*config;
 	int			 fd;
 };
+
+static bool loop = true;
+
+void
+signal_handler(int sig)
+{
+	if (sig == SIGALRM)
+		loop = false;
+}
 
 void
 generate_cert(uint8_t **key, size_t *key_size, uint8_t **crt, size_t *crt_size)
@@ -117,8 +127,6 @@ server(struct sockaddr_in *sin)
 
 	memset(&server, 0, sizeof server);
 
-	fprintf(stderr, "server\n");
-
 	/*
 	 * TLS preparation
 	 */
@@ -147,7 +155,7 @@ server(struct sockaddr_in *sin)
 		err(1, "socket");
 
 	if (setsockopt(server.fd, SOL_SOCKET, SO_REUSEADDR,
-	    (int [1]){1}, sizeof(int *)) == -1)
+	    (int []){1}, sizeof(int *)) == -1)
 		err(1, "setsockopt");
 
 	if (bind(server.fd, (struct sockaddr *)sin, sizeof *sin) == -1)
@@ -183,8 +191,6 @@ client(struct sockaddr_in *sin)
 	int			 fd;
 	int			 data;
 
-	fprintf(stderr, "client\n");
-
 	if ((tls = tls_client()) == NULL)
 		err(1, "tls_server");
 
@@ -216,7 +222,7 @@ client(struct sockaddr_in *sin)
 void
 usage(void)
 {
-	fprintf(stderr, "tlsbench [-l] [address] [port]\n");
+	fprintf(stderr, "tlsbench [-l] [-w sec] [address] [port]\n");
 }
 
 int
@@ -226,14 +232,23 @@ main(int argc, char *argv[])
 	const char		*errstr;
 	char			*addr = "127.0.0.1";
 	char			*port = "12345";
-	bool			 lflag = false;
+	size_t			 cnt;
+	unsigned int		 seconds = 5;
 	int			 ch;
+	bool			 lflag = false;
 
-	while ((ch = getopt(argc, argv, "l")) != -1) {
+	while ((ch = getopt(argc, argv, "lw:")) != -1) {
 		switch (ch) {
 		case 'l':
 			lflag = true;
 			break;
+
+		case 'w':
+			seconds = strtonum(optarg, 1, UINT_MAX, &errstr);
+			if (errstr != NULL)
+				errx(EXIT_FAILURE, "strtonum: %s", errstr);
+			break;
+
 		default:
 			usage();
 		}
@@ -269,5 +284,16 @@ main(int argc, char *argv[])
 	if (lflag)
 		return server(&sin);
 
-	return client(&sin);
+	signal(SIGALRM, signal_handler);
+
+	/* set timer */
+	if (alarm(seconds) == (unsigned int)-1)
+		err(EXIT_FAILURE, "alarm");
+
+	for (cnt = 0; loop; cnt++)
+		client(&sin);
+
+	printf("%zu\n", cnt);
+
+	return 0;
 }
