@@ -203,20 +203,32 @@ client(struct sockaddr_in *sin)
 	tls_config_insecure_noverifyname(config);
 	tls_config_insecure_noverifycert(config);
 
-	if ((fd = socket(AF_INET, SOCK_STREAM, 0)) == -1)
+	if ((fd = socket(AF_INET, SOCK_STREAM, 0)) == -1) {
+		if (errno == EINTR)
+			return 0;
 		err(1, "socket");
+	}
 
-	if (connect(fd, (struct sockaddr *)sin, sizeof *sin) == -1)
+	if (connect(fd, (struct sockaddr *)sin, sizeof *sin) == -1) {
+		if (errno == EINTR)
+			return 0;
 		err(1, "connect");
+	}
 
 	if (tls_connect_socket(tls, fd, "localhost") == -1)
 		err(1, "tls_connect_socket: %s", tls_error(tls));
 
-	if (read(fd, &data, sizeof data) != 0)
+	if (read(fd, &data, sizeof data) != 0) {
+		if (errno == EINTR)
+			return 0;
 		err(1, "read");
+	}
 
-	if (close(fd) == -1)
+	if (close(fd) == -1) {
+		if (errno == EINTR)
+			return 0;
 		err(1, "close");
+	}
 
 	return 0;
 }
