@@ -1,5 +1,5 @@
-CFLAGS=-Wall -Wextra
-LDFLAGS=-ltls -lssl -lcrypto
+CFLAGS += -Wall -Wextra
+LDFLAGS += -ltls -lssl -lcrypto
 
 all: tlsbench
 
