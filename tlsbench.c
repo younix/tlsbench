@@ -108,29 +108,41 @@ generate_cert(uint8_t **key, size_t *key_size, uint8_t **crt, size_t *crt_size)
 int
 server(struct sockaddr_in *sin)
 {
-	struct server	server;
-	int		c;
-	char		buf[INET_ADDRSTRLEN];
+	char		 buf[INET_ADDRSTRLEN];
+	struct server	 server;
+	uint8_t		*crt = NULL;
+	uint8_t		*key = NULL;
+	size_t		 key_size;
+	size_t		 crt_size;
+	int		 c;
 
 	memset(&server, 0, sizeof server);
 
 	fprintf(stderr, "server\n");
 
-#if 0
-	/* Generate key with selfsigned certificate. */
-	generate_cert(&key, &key_size, &crt, &crt_size);
-	if (tls_config_set_key_mem(ptb->tls_cfg, key, key_size) == -1)
-		errx(1, "%s", tls_config_error(ptb->tls_cfg));
+	/*
+	 * TLS preparation
+	 */
 
 	if ((server.tls = tls_server()) == NULL)
 		err(1, "tls_server");
 
-	if ((srv.config = tls_config_new()) == NULL)
+	if ((server.config = tls_config_new()) == NULL)
 		err(1, "tls_config_new");
+
+	/* Generate key with selfsigned certificate. */
+	generate_cert(&key, &key_size, &crt, &crt_size);
+	if (tls_config_set_key_mem(server.config, key, key_size) == -1)
+		errx(1, "%s", tls_config_error(server.config));
+	if (tls_config_set_cert_mem(server.config, crt, crt_size) == -1)
+		errx(1, "%s", tls_config_error(server.config));
 
 	if (tls_configure(server.tls, server.config) == -1)
 		err(1, "tls_configure");
-#endif
+
+	/*
+	 * Socket Handling
+	 */
 
 	server.fd = socket(AF_INET, SOCK_STREAM, 0);
 	if (server.fd == -1)
@@ -149,8 +161,13 @@ server(struct sockaddr_in *sin)
 		err(1, "listen");
 
 	for (;;) {
+		struct tls *ctx;
+
 		if ((c = accept(server.fd, NULL, NULL)) == -1)
 			err(1, "accept");
+
+		if (tls_accept_socket(server.tls, &ctx, c) == -1)
+			err(1, "tls_accept_socket: %s", tls_error(server.tls));
 
 		if (close(c) == -1)
 			err(1, "close");
@@ -165,17 +182,23 @@ server(struct sockaddr_in *sin)
 int
 client(struct sockaddr_in *sin)
 {
-	char	buf[INET_ADDRSTRLEN];
-	int	fd;
-	int	data;
+	char			 buf[INET_ADDRSTRLEN];
+	struct tls		*tls;
+	struct tls_config	*config;
+	int			 fd;
+	int			 data;
 
 	fprintf(stderr, "client\n");
 
-#if 0
-	tls_config_insecure_noverifycert();
-	tls_config_insecure_noverifyname();
-	tls_config_insecure_noverifytime();
-#endif
+	if ((tls = tls_client()) == NULL)
+		err(1, "tls_server");
+
+	if ((config = tls_config_new()) == NULL)
+		err(1, "tls_config_new");
+
+	/* Don't check server certificate. */
+	tls_config_insecure_noverifyname(config);
+	tls_config_insecure_noverifycert(config);
 
 	fd = socket(AF_INET, SOCK_STREAM, 0);
 	if (fd == -1)
@@ -185,6 +208,9 @@ client(struct sockaddr_in *sin)
 		err(1, "connect %s:%hu",
 		    inet_ntop(AF_INET, &sin->sin_addr, buf, sizeof *sin),
 		    ntohs(sin->sin_port));
+
+	if (tls_connect_socket(tls, fd, "localhost") == -1)
+		err(1, "tls_connect_socket: %s", tls_error(tls));
 
 	if (read(fd, &data, sizeof data) != 0)
 		err(1, "read");
@@ -230,7 +256,6 @@ main(int argc, char *argv[])
 		addr = argv[0];
 	if (argc > 1)
 		port = argv[1];
-
 
 	/*
 	 * Set socket addess
