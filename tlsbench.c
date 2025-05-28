@@ -319,7 +319,7 @@ main(int argc, char *argv[])
 	for (cnt = 0; loop; cnt++)
 		client(&sin);
 
-	printf("%zu\n", cnt);
+	printf("%zu\n", cnt / seconds);
 
 	return 0;
 }
