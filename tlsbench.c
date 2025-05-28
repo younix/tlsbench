@@ -108,7 +108,6 @@ generate_cert(uint8_t **key, size_t *key_size, uint8_t **crt, size_t *crt_size)
 int
 server(struct sockaddr_in *sin)
 {
-	char		 buf[INET_ADDRSTRLEN];
 	struct server	 server;
 	uint8_t		*crt = NULL;
 	uint8_t		*key = NULL;
@@ -144,8 +143,7 @@ server(struct sockaddr_in *sin)
 	 * Socket Handling
 	 */
 
-	server.fd = socket(AF_INET, SOCK_STREAM, 0);
-	if (server.fd == -1)
+	if ((server.fd = socket(AF_INET, SOCK_STREAM, 0)) == -1)
 		err(1, "socket");
 
 	if (setsockopt(server.fd, SOL_SOCKET, SO_REUSEADDR,
@@ -153,9 +151,7 @@ server(struct sockaddr_in *sin)
 		err(1, "setsockopt");
 
 	if (bind(server.fd, (struct sockaddr *)sin, sizeof *sin) == -1)
-		err(1, "bind %s:%hu",
-		    inet_ntop(AF_INET, &sin->sin_addr, buf, sizeof *sin),
-		    ntohs(sin->sin_port));
+		err(1, "bind");
 
 	if (listen(server.fd, 10) == -1)
 		err(1, "listen");
@@ -182,7 +178,6 @@ server(struct sockaddr_in *sin)
 int
 client(struct sockaddr_in *sin)
 {
-	char			 buf[INET_ADDRSTRLEN];
 	struct tls		*tls;
 	struct tls_config	*config;
 	int			 fd;
@@ -200,14 +195,11 @@ client(struct sockaddr_in *sin)
 	tls_config_insecure_noverifyname(config);
 	tls_config_insecure_noverifycert(config);
 
-	fd = socket(AF_INET, SOCK_STREAM, 0);
-	if (fd == -1)
+	if ((fd = socket(AF_INET, SOCK_STREAM, 0)) == -1)
 		err(1, "socket");
 
 	if (connect(fd, (struct sockaddr *)sin, sizeof *sin) == -1)
-		err(1, "connect %s:%hu",
-		    inet_ntop(AF_INET, &sin->sin_addr, buf, sizeof *sin),
-		    ntohs(sin->sin_port));
+		err(1, "connect");
 
 	if (tls_connect_socket(tls, fd, "localhost") == -1)
 		err(1, "tls_connect_socket: %s", tls_error(tls));
