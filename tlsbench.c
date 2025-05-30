@@ -1,4 +1,5 @@
 #include <sys/socket.h>
+#include <sys/wait.h>
 #include <arpa/inet.h>
 #include <netinet/in.h>
 
@@ -209,7 +210,7 @@ generate_ec(uint8_t **key, size_t *key_size, uint8_t **crt, size_t *crt_size)
 }
 
 int
-server(struct sockaddr_in *sin)
+server(struct sockaddr_in *sin, int jobs)
 {
 	struct server	 server;
 	uint8_t		*crt = NULL;
@@ -258,6 +259,18 @@ server(struct sockaddr_in *sin)
 	if (listen(server.fd, 10) == -1)
 		err(1, "listen");
 
+	/* create jobs */
+	for (int i = 0; i < jobs - 1; i++) {
+		switch (fork()) {
+		case -1:
+			err(1, "fork");
+		case 0: /* child */
+			goto out;
+		default: /* parent */
+			continue;
+		}
+	}
+ out:
 	for (;;) {
 		struct tls *ctx;
 
@@ -410,7 +423,7 @@ main(int argc, char *argv[])
 	}
 
 	if (lflag)
-		return server(&sin);
+		return server(&sin, jobs);
 
 	signal(SIGALRM, signal_handler);
 
