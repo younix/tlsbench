@@ -350,7 +350,11 @@ main(int argc, char *argv[])
 	unsigned int		 seconds = 5;
 	int			 ch;
 	int			 jobs = 1;
+	int			 max_childs;
 	bool			 lflag = false;
+
+	if ((max_childs = sysconf(_SC_CHILD_MAX)) == -1)
+		err(1, "sysconf(_SC_CHILD_MAX)");
 
 	while ((ch = getopt(argc, argv, "Dj:lw:")) != -1) {
 		switch (ch) {
@@ -359,9 +363,9 @@ main(int argc, char *argv[])
 			break;
 
 		case 'j':
-			jobs = strtonum(optarg, 1, CHILD_MAX, &errstr);
+			jobs = strtonum(optarg, 1, max_childs, &errstr);
 			if (errstr != NULL)
-				errx(1, "strtonum: %s", errstr);
+				errx(1, "jobs: %s", errstr);
 			break;
 
 		case 'l':
