@@ -336,7 +336,7 @@ client(struct sockaddr_in *sin)
 void
 usage(void)
 {
-	fprintf(stderr, "tlsbench [-Dl] [-w sec] [address] [port]\n");
+	fprintf(stderr, "tlsbench [-Dl] [-j jobs] [-w sec] [address] [port]\n");
 }
 
 int
@@ -346,15 +346,22 @@ main(int argc, char *argv[])
 	const char		*errstr;
 	char			*addr = "127.0.0.1";
 	char			*port = "12345";
-	size_t			 cnt;
+	size_t			 cnt = 0;
 	unsigned int		 seconds = 5;
 	int			 ch;
+	int			 jobs = 1;
 	bool			 lflag = false;
 
-	while ((ch = getopt(argc, argv, "Dlw:")) != -1) {
+	while ((ch = getopt(argc, argv, "Dj:lw:")) != -1) {
 		switch (ch) {
 		case 'D':
 			dotls = false;
+			break;
+
+		case 'j':
+			jobs = strtonum(optarg, 1, CHILD_MAX, &errstr);
+			if (errstr != NULL)
+				errx(1, "strtonum: %s", errstr);
 			break;
 
 		case 'l':
@@ -364,7 +371,7 @@ main(int argc, char *argv[])
 		case 'w':
 			seconds = strtonum(optarg, 1, UINT_MAX, &errstr);
 			if (errstr != NULL)
-				errx(EXIT_FAILURE, "strtonum: %s", errstr);
+				errx(1, "strtonum: %s", errstr);
 			break;
 
 		default:
@@ -403,12 +410,50 @@ main(int argc, char *argv[])
 
 	signal(SIGALRM, signal_handler);
 
-	/* set timer */
-	if (alarm(seconds) == (unsigned int)-1)
-		err(EXIT_FAILURE, "alarm");
+	int fd[jobs][2];
 
-	for (cnt = 0; loop; cnt++)
-		client(&sin);
+	for (int i = 0; i < jobs; i++) {
+		if (pipe(fd[i]) == -1)
+			err(1, "pipe");
+
+		switch (fork()) {
+		case -1:
+			err(1, "fork");
+		case 0: /* child */
+			/* close the reading side */
+			if (close(fd[i][0]) == -1)
+				err(1, "close");
+
+			/* set timer */
+			if (alarm(seconds) == (unsigned int)-1)
+				err(1, "alarm");
+
+			/* count test runs */
+			for (cnt = 0; loop; cnt++)
+				client(&sin);
+
+			/* write results to master */
+			if (write(fd[i][1], &cnt, sizeof cnt) != sizeof cnt)
+				err(1, "write");
+
+			exit(EXIT_SUCCESS);
+			break;
+		default: /* parent */
+			/* close the writing side */
+			if (close(fd[i][1]) == -1)
+				err(1, "close");
+		}
+	}
+
+	/* collect the results */
+	for (int i = 0; i < jobs; i++) {
+		size_t c;
+
+		if (read(fd[i][0], &c, sizeof c) != sizeof c)
+			err(1, "read");
+		cnt += c;
+	}
+
 
 	printf("%zu\n", cnt / seconds);
 
