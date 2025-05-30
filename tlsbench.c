@@ -13,6 +13,7 @@
 #include <unistd.h>
 
 #include <tls.h>
+#include <openssl/err.h>
 #include <openssl/x509.h>
 #include <openssl/pem.h>
 
@@ -33,7 +34,7 @@ signal_handler(int sig)
 }
 
 void
-generate_cert(uint8_t **key, size_t *key_size, uint8_t **crt, size_t *crt_size)
+generate_rsa(uint8_t **key, size_t *key_size, uint8_t **crt, size_t *crt_size)
 {
 	EVP_PKEY	*pkey;
 	EVP_PKEY_CTX	*ctx;
@@ -53,6 +54,95 @@ generate_cert(uint8_t **key, size_t *key_size, uint8_t **crt, size_t *crt_size)
 		errx(1, "EVP_PKEY_keygen_init");
 	if (EVP_PKEY_CTX_set_rsa_keygen_bits(ctx, 2048) <= 0)
 		errx(1, "EVP_PKEY_CTX_set_rsa_keygen_bits");
+	if (EVP_PKEY_keygen(ctx, &pkey) <= 0)
+		errx(1, "EVP_PKEY_keygen");
+
+	/* Get memory pointer of RSA key. */
+	memset(&mem, 0, sizeof mem);
+	if ((bio = BIO_new(BIO_s_mem())) == NULL)
+		errx(1, "BIO_new");
+	if (BIO_set_mem_buf(bio, &mem, BIO_NOCLOSE) <= 0)
+		errx(1, "BIO_set_mem_buf");
+	if (PEM_write_bio_PrivateKey(bio, pkey, NULL, NULL, 0, NULL, NULL) == 0)
+		errx(1, "PEM_write_bio_PrivateKey");
+	if (BIO_free(bio) == 0)
+		errx(1, "BIO_free");
+	*key = mem.data;
+	*key_size = mem.length;
+
+	/*
+	 * Generate self sign certificate.
+	 */
+	if ((x509 = X509_new()) == NULL)
+		err(1, "X509_new");
+
+	/* Set subject and issuer. */
+	name = X509_get_subject_name(x509);
+	if (X509_NAME_add_entry_by_txt(name, "CN", MBSTRING_ASC, "localhost",
+	    -1, -1, 0) == 0)
+		err(1, "X509_NAME_add_entry_by_txt");
+	X509_set_subject_name(x509, name);
+	X509_set_issuer_name(x509, name);
+
+	/* Set serial number. */
+	if (ASN1_INTEGER_set(X509_get_serialNumber(x509), 1) == 0)
+		err(1, "ASN1_INTEGER_set");
+	/* Use certificate version 3. */
+	if (X509_set_version(x509, 2) == 0)
+		err(1, "X509_set_version");
+
+	/* Expiration date: 30 days (60s * 60m * 24h * 30d) */
+	X509_gmtime_adj(X509_get_notBefore(x509), 0);
+	X509_gmtime_adj(X509_get_notAfter(x509), 2592000);
+
+	/* Sign the certificate with the key. */
+	if (X509_set_pubkey(x509, pkey) == 0)
+		err(1, "X509_set_pubkey");
+	if (X509_sign(x509, pkey, EVP_sha256()) == 0)
+		err(1, "X509_sign");
+
+	/* Get memory pointer of certificate. */
+	memset(&mem, 0, sizeof mem);
+	if ((bio = BIO_new(BIO_s_mem())) == NULL)
+		errx(1, "BIO_new");
+	if (BIO_set_mem_buf(bio, &mem, BIO_NOCLOSE) <= 0)
+		errx(1, "BIO_set_mem_buf");
+	if (PEM_write_bio_X509(bio, x509) == 0)
+		err(1, "PEM_write_bio_X509");
+	if (BIO_free(bio) == 0)
+		errx(1, "BIO_free");
+	*crt = mem.data;
+	*crt_size = mem.length;
+
+	X509_free(x509);
+	EVP_PKEY_free(pkey);
+	EVP_PKEY_CTX_free(ctx);
+}
+
+void
+generate_ec(uint8_t **key, size_t *key_size, uint8_t **crt, size_t *crt_size)
+{
+	EVP_PKEY	*pkey;
+	EVP_PKEY_CTX	*ctx;
+	X509		*x509;
+	X509_NAME	*name;
+	BIO		*bio;
+	BUF_MEM		 mem;
+	char		 buf[BUFSIZ];
+
+	/*
+	 * Generate EC key.
+	 */
+	if ((pkey = EVP_PKEY_new()) == NULL)
+		err(1, "EVP_PKEY_new");
+	if ((ctx = EVP_PKEY_CTX_new_id(EVP_PKEY_EC, NULL)) == NULL)
+		errx(1, "EVP_PKEY_CTX_new_id");
+	if (EVP_PKEY_keygen_init(ctx) <= 0)
+		errx(1, "EVP_PKEY_keygen_init");
+	if (EVP_PKEY_CTX_set_ec_paramgen_curve_nid(ctx,
+	    NID_X9_62_prime256v1) <= 0)
+		errx(1, "EVP_PKEY_CTX_set_ec_paramgen_curve_nid: %s",
+		    ERR_error_string(ERR_get_error(), buf));
 	if (EVP_PKEY_keygen(ctx, &pkey) <= 0)
 		errx(1, "EVP_PKEY_keygen");
 
@@ -141,7 +231,8 @@ server(struct sockaddr_in *sin)
 			err(1, "tls_config_new");
 
 		/* Generate key with selfsigned certificate. */
-		generate_cert(&key, &key_size, &crt, &crt_size);
+		//generate_rsa(&key, &key_size, &crt, &crt_size);
+		generate_ec(&key, &key_size, &crt, &crt_size);
 		if (tls_config_set_key_mem(server.config, key, key_size) == -1)
 			errx(1, "%s", tls_config_error(server.config));
 		if (tls_config_set_cert_mem(server.config, crt, crt_size) == -1)
