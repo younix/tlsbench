@@ -291,6 +291,9 @@ client(struct sockaddr_in *sin)
 		/* Don't check server certificate. */
 		tls_config_insecure_noverifyname(config);
 		tls_config_insecure_noverifycert(config);
+
+		if (tls_configure(tls, config) == -1)
+			err(1, "tls_configure");
 	}
 
 	/*
