@@ -260,6 +260,12 @@ server(struct sockaddr_in *sin, int jobs)
 		if (dotls && tls_accept_socket(server.tls, &ctx, c) == -1)
 			err(1, "tls_accept_socket: %s", tls_error(server.tls));
 
+		if (dotls && tls_handshake(ctx) == -1)
+			err(1, "tls_handshake: %s", tls_error(ctx));
+
+		if (dotls && tls_close(ctx) == -1)
+			err(1, "tls_close: %s", tls_error(ctx));
+
 		if (close(c) == -1)
 			err(1, "close");
 	}
@@ -311,13 +317,21 @@ client(struct sockaddr_in *sin)
 		err(1, "connect");
 	}
 
-	if (dotls && tls_connect_socket(tls, fd, "localhost") == -1)
-		err(1, "tls_connect_socket: %s", tls_error(tls));
+	if (dotls) {
+		if (tls_connect_socket(tls, fd, "localhost") == -1)
+			err(1, "tls_connect_socket: %s", tls_error(tls));
 
-	if (read(fd, &data, sizeof data) != 0) {
-		if (errno == EINTR)
-			return 0;
-		err(1, "read");
+		if (tls_handshake(tls) == -1)
+			errx(1, "tls_handshake: %s", tls_error(tls));
+
+		if (tls_close(tls) == -1)
+			err(1, "tls_close: %s", tls_error(tls));
+	} else {
+		if (read(fd, &data, sizeof data) != 0) {
+			if (errno == EINTR)
+				return 0;
+			err(1, "read");
+		}
 	}
 
 	if (close(fd) == -1) {
