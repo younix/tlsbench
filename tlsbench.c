@@ -50,13 +50,13 @@ signal_handler(int sig)
 		loop = false;
 }
 
+/* Get memory pointer of pkey or x509 object.*/
 void
 obj2data(uint8_t **data, size_t *size, EVP_PKEY *pkey, X509 *x509)
 {
 	BIO		*bio;
 	BUF_MEM		 mem;
 
-	/* Get memory pointer of certificate. */
 	memset(&mem, 0, sizeof mem);
 	if ((bio = BIO_new(BIO_s_mem())) == NULL)
 		errx(1, "BIO_new");
@@ -137,6 +137,7 @@ generate_rsa(uint8_t **key, size_t *key_size, uint8_t **crt, size_t *crt_size)
 	if (EVP_PKEY_keygen(ctx, &pkey) <= 0)
 		errx(1, "EVP_PKEY_keygen");
 
+	/* Get memory pointer of RSA key. */
 	obj2data(key, key_size, pkey, NULL);
 
 	sign(pkey, crt, crt_size);
@@ -150,8 +151,6 @@ generate_ec(uint8_t **key, size_t *key_size, uint8_t **crt, size_t *crt_size)
 {
 	EVP_PKEY	*pkey;
 	EVP_PKEY_CTX	*ctx;
-	BIO		*bio;
-	BUF_MEM		 mem;
 	char		 buf[BUFSIZ];
 
 	/*
@@ -171,17 +170,7 @@ generate_ec(uint8_t **key, size_t *key_size, uint8_t **crt, size_t *crt_size)
 		errx(1, "EVP_PKEY_keygen");
 
 	/* Get memory pointer of EC key. */
-	memset(&mem, 0, sizeof mem);
-	if ((bio = BIO_new(BIO_s_mem())) == NULL)
-		errx(1, "BIO_new");
-	if (BIO_set_mem_buf(bio, &mem, BIO_NOCLOSE) <= 0)
-		errx(1, "BIO_set_mem_buf");
-	if (PEM_write_bio_PrivateKey(bio, pkey, NULL, NULL, 0, NULL, NULL) == 0)
-		errx(1, "PEM_write_bio_PrivateKey");
-	if (BIO_free(bio) == 0)
-		errx(1, "BIO_free");
-	*key = mem.data;
-	*key_size = mem.length;
+	obj2data(key, key_size, pkey, NULL);
 
 	sign(pkey, crt, crt_size);
 
