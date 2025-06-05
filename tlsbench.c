@@ -411,7 +411,8 @@ main(int argc, char *argv[])
 	if (lflag)
 		return server(&sin, jobs);
 
-	signal(SIGALRM, signal_handler);
+	if (signal(SIGALRM, signal_handler) == SIG_ERR)
+		err(1, "signal(SIGALRM)");
 
 	int fd[jobs][2];
 
