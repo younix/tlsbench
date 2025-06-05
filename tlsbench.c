@@ -241,19 +241,33 @@ server(struct sockaddr_in *sin, int jobs)
 	}
  out:
 	for (;;) {
-		struct tls *ctx;
+		struct tls	*ctx;
+		ssize_t		 ret;
+		int		 data;
 
 		if ((c = accept(server.fd, NULL, NULL)) == -1)
 			err(1, "accept");
 
-		if (dotls && tls_accept_socket(server.tls, &ctx, c) == -1)
-			err(1, "tls_accept_socket: %s", tls_error(server.tls));
+		if (dotls) {
+			if (tls_accept_socket(server.tls, &ctx, c) == -1)
+				err(1, "tls_accept_socket: %s",
+				    tls_error(server.tls));
 
-		if (dotls && tls_handshake(ctx) == -1)
-			err(1, "tls_handshake: %s", tls_error(ctx));
+			if (tls_handshake(ctx) != 0)
+				err(1, "tls_handshake: %s", tls_error(ctx));
 
-		if (dotls && tls_close(ctx) == -1)
-			err(1, "tls_close: %s", tls_error(ctx));
+			if ((ret = tls_close(ctx)) != 0)
+				err(1, "tls_close: %s", tls_error(ctx));
+
+			while ((ret = tls_read(ctx, &data, sizeof data)) != 0) {
+				if (ret == -1)
+					err(1, "tls_read: %s", tls_error(ctx));
+				if (ret > 0)
+					errx(1, "tls_read: unexpected data");
+			}
+
+			tls_free(ctx);
+		}
 
 		if (close(c) == -1)
 			err(1, "close");
@@ -270,6 +284,7 @@ client(struct sockaddr_in *sin)
 {
 	struct tls		*tls;
 	struct tls_config	*config;
+	ssize_t			 ret;
 	int			 fd;
 	int			 data;
 
@@ -310,11 +325,21 @@ client(struct sockaddr_in *sin)
 		if (tls_connect_socket(tls, fd, "localhost") == -1)
 			err(1, "tls_connect_socket: %s", tls_error(tls));
 
-		if (tls_handshake(tls) == -1)
+		if (tls_handshake(tls) != 0)
 			errx(1, "tls_handshake: %s", tls_error(tls));
 
-		if (tls_close(tls) == -1)
+		if (tls_close(tls) != 0)
 			err(1, "tls_close: %s", tls_error(tls));
+
+		while ((ret = tls_read(tls, &data, sizeof data)) != 0) {
+			if (ret == -1)
+				err(1, "tls_read: %s", tls_error(tls));
+			if (ret > 0)
+				errx(1, "tls_read: unexpected data");
+		}
+
+		tls_free(tls);
+		tls_config_free(config);
 	} else {
 		if (read(fd, &data, sizeof data) != 0) {
 			if (errno == EINTR)
