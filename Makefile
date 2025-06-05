@@ -1,4 +1,4 @@
-CFLAGS += -Wall -Wextra
+CFLAGS += -Wall -Wextra -Wno-pointer-sign
 LDFLAGS += -ltls -lssl -lcrypto
 
 all: tlsbench
