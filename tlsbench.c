@@ -27,6 +27,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <ctype.h>
 #include <unistd.h>
 
 #include <tls.h>
@@ -208,6 +209,8 @@ server(struct sockaddr_in *sin, int jobs)
 		if (tls_config_set_cert_mem(server.config, crt, crt_size) == -1)
 			errx(1, "%s", tls_config_error(server.config));
 
+		tls_config_set_protocols(server.config, TLS_PROTOCOL_TLSv1_2);
+
 		if (tls_configure(server.tls, server.config) == -1)
 			err(1, "tls_configure");
 	}
@@ -240,10 +243,10 @@ server(struct sockaddr_in *sin, int jobs)
 		}
 	}
  out:
-	for (;;) {
+	for (;loop;) {
 		struct tls	*ctx;
 		ssize_t		 ret;
-		int		 data;
+		char		 buf[1024];
 
 		if ((c = accept(server.fd, NULL, NULL)) == -1)
 			err(1, "accept");
@@ -259,11 +262,20 @@ server(struct sockaddr_in *sin, int jobs)
 			if ((ret = tls_close(ctx)) != 0)
 				err(1, "tls_close: %s", tls_error(ctx));
 
-			while ((ret = tls_read(ctx, &data, sizeof data)) != 0) {
+			while ((ret = tls_read(ctx, &buf, sizeof buf)) != 0) {
 				if (ret == -1)
 					err(1, "tls_read: %s", tls_error(ctx));
-				if (ret > 0)
-					errx(1, "tls_read: unexpected data");
+				if (ret > 0) {
+					for (ssize_t i = 0; i < ret; i++)
+						printf(" %02hhx", buf[i]);
+					putchar('\n');
+					for (ssize_t i = 0; i < ret; i++)
+						putchar(isprint(buf[i]) ? buf[i] : '.');
+					putchar('\n');
+
+					warnx("tls_read: unexpected data: %zd", ret);
+//					loop = false;
+				}
 			}
 
 			tls_free(ctx);
@@ -286,7 +298,7 @@ client(struct sockaddr_in *sin)
 	struct tls_config	*config;
 	ssize_t			 ret;
 	int			 fd;
-	int			 data;
+	char			 buf[1024];
 
 	/*
 	 * TLS preparation
@@ -301,6 +313,7 @@ client(struct sockaddr_in *sin)
 		/* Don't check server certificate. */
 		tls_config_insecure_noverifyname(config);
 		tls_config_insecure_noverifycert(config);
+		tls_config_set_protocols(config, TLS_PROTOCOL_TLSv1_2);
 
 		if (tls_configure(tls, config) == -1)
 			err(1, "tls_configure");
@@ -331,17 +344,27 @@ client(struct sockaddr_in *sin)
 		if (tls_close(tls) != 0)
 			err(1, "tls_close: %s", tls_error(tls));
 
-		while ((ret = tls_read(tls, &data, sizeof data)) != 0) {
+		memset(buf, 0, sizeof buf);
+
+		while ((ret = tls_read(tls, &buf, sizeof buf)) != 0) {
 			if (ret == -1)
 				err(1, "tls_read: %s", tls_error(tls));
-			if (ret > 0)
-				errx(1, "tls_read: unexpected data");
+			if (ret > 0) {
+				for (ssize_t i = 0; i < ret; i++)
+					printf(" %02hhx", buf[i]);
+				putchar('\n');
+				for (ssize_t i = 0; i < ret; i++)
+					putchar(isprint(buf[i]) ? buf[i] : '.');
+				putchar('\n');
+				warnx("tls_read: unexpected data: %zd", ret);
+				loop = false;
+			}
 		}
 
 		tls_free(tls);
 		tls_config_free(config);
 	} else {
-		if (read(fd, &data, sizeof data) != 0) {
+		if (read(fd, &buf, sizeof buf) != 0) {
 			if (errno == EINTR)
 				return 0;
 			err(1, "read");
