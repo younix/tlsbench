@@ -246,7 +246,7 @@ server(struct sockaddr_in *sin, int jobs)
 	for (;loop;) {
 		struct tls	*ctx;
 		ssize_t		 ret;
-		char		 buf[1024];
+		char		 buf[1];
 
 		if ((c = accept(server.fd, NULL, NULL)) == -1)
 			err(1, "accept");
@@ -258,6 +258,9 @@ server(struct sockaddr_in *sin, int jobs)
 
 			if (tls_handshake(ctx) != 0)
 				err(1, "tls_handshake: %s", tls_error(ctx));
+
+			if (tls_write(ctx, &buf, sizeof buf) != sizeof buf)
+				err(1, "tls_write: %s", tls_error(ctx));
 
 			if ((ret = tls_close(ctx)) != 0)
 				err(1, "tls_close: %s", tls_error(ctx));
@@ -298,7 +301,7 @@ client(struct sockaddr_in *sin)
 	struct tls_config	*config;
 	ssize_t			 ret;
 	int			 fd;
-	char			 buf[1024];
+	char			 buf[1];
 
 	/*
 	 * TLS preparation
@@ -340,6 +343,9 @@ client(struct sockaddr_in *sin)
 
 		if (tls_handshake(tls) != 0)
 			errx(1, "tls_handshake: %s", tls_error(tls));
+
+		if (tls_read(tls, &buf, sizeof buf) != sizeof buf)
+			err(1, "tls_write: %s", tls_error(tls));
 
 		if (tls_close(tls) != 0)
 			err(1, "tls_close: %s", tls_error(tls));
