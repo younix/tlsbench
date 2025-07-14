@@ -282,6 +282,15 @@ server(struct sockaddr_in *sin, int jobs)
 			}
 
 			tls_free(ctx);
+		} else {
+			if (shutdown(c, SHUT_WR) == -1)
+				err(1, "shutdown");
+ again:
+			if (read(c, buf, sizeof buf) != 0) {
+				if (errno == EINTR)
+					goto again;
+				err(1, "read");
+			}
 		}
 
 		if (close(c) == -1)
