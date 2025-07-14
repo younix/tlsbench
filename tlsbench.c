@@ -259,8 +259,10 @@ server(struct sockaddr_in *sin, int jobs)
 			if (tls_handshake(ctx) != 0)
 				err(1, "tls_handshake: %s", tls_error(ctx));
 
+#ifdef notyet
 			if (tls_write(ctx, &buf, sizeof buf) != sizeof buf)
 				err(1, "tls_write: %s", tls_error(ctx));
+#endif
 
 			if ((ret = tls_close(ctx)) != 0)
 				err(1, "tls_close: %s", tls_error(ctx));
@@ -353,8 +355,10 @@ client(struct sockaddr_in *sin)
 		if (tls_handshake(tls) != 0)
 			errx(1, "tls_handshake: %s", tls_error(tls));
 
+#ifdef notyet
 		if (tls_read(tls, &buf, sizeof buf) != sizeof buf)
-			err(1, "tls_write: %s", tls_error(tls));
+			err(1, "tls_read: %s", tls_error(tls));
+#endif
 
 		if (tls_close(tls) != 0)
 			err(1, "tls_close: %s", tls_error(tls));
