@@ -379,9 +379,10 @@ client(struct sockaddr_in *sin)
 		tls_free(tls);
 		tls_config_free(config);
 	} else {
+ again:
 		if (read(fd, &buf, sizeof buf) != 0) {
 			if (errno == EINTR)
-				return 0;
+				goto again;
 			err(1, "read");
 		}
 	}
