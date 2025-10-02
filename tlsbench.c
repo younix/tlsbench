@@ -270,17 +270,8 @@ server(struct sockaddr_in *sin, int jobs)
 			while ((ret = tls_read(ctx, &buf, sizeof buf)) != 0) {
 				if (ret == -1)
 					err(1, "tls_read: %s", tls_error(ctx));
-				if (ret > 0) {
-					for (ssize_t i = 0; i < ret; i++)
-						printf(" %02hhx", buf[i]);
-					putchar('\n');
-					for (ssize_t i = 0; i < ret; i++)
-						putchar(isprint(buf[i]) ? buf[i] : '.');
-					putchar('\n');
-
-					warnx("tls_read: unexpected data: %zd", ret);
-//					loop = false;
-				}
+				if (ret > 0)
+					errx(1, "tls_read: unexpected data");
 			}
 
 			tls_free(ctx);
@@ -368,16 +359,8 @@ client(struct sockaddr_in *sin)
 		while ((ret = tls_read(tls, &buf, sizeof buf)) != 0) {
 			if (ret == -1)
 				err(1, "tls_read: %s", tls_error(tls));
-			if (ret > 0) {
-				for (ssize_t i = 0; i < ret; i++)
-					printf(" %02hhx", buf[i]);
-				putchar('\n');
-				for (ssize_t i = 0; i < ret; i++)
-					putchar(isprint(buf[i]) ? buf[i] : '.');
-				putchar('\n');
-				warnx("tls_read: unexpected data: %zd", ret);
-				loop = false;
-			}
+			if (ret > 0)
+				errx(1, "tls_read: unexpected data");
 		}
 
 		tls_free(tls);
