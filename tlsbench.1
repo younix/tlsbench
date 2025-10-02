@@ -22,7 +22,7 @@
 .Nd Benchmarking of TLS/TCP connections
 .Sh SYNOPSIS
 .Nm
-.Op Fl \&Dl
+.Op Fl \&Dlv
 .Op Fl j Ar jobs
 .Op Fl w Ar secs
 .Op Ar address
@@ -54,6 +54,8 @@ Default
 is 127.0.0.1 and
 .Ar port
 12345.
+.It Fl v
+Increase verbosity.
 .It Fl j Ar jobs
 .Ar jobs
 is the number of parallel processes doing the measurement loop.

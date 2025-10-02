@@ -43,6 +43,7 @@ struct server {
 
 static bool loop = true;
 static bool dotls = true;
+static int verbosity = 0;
 
 void
 signal_handler(int sig)
@@ -247,9 +248,14 @@ server(struct sockaddr_in *sin, int jobs)
 		struct tls	*ctx;
 		ssize_t		 ret;
 		char		 buf[1];
+		socklen_t	 slen = sizeof(*sin);
 
-		if ((c = accept(server.fd, NULL, NULL)) == -1)
+		if ((c = accept(server.fd, (struct sockaddr *)sin, &slen)) == -1)
 			err(1, "accept");
+
+		if (verbosity)
+			printf("accept %s:%hu\n", inet_ntoa(sin->sin_addr),
+			    ntohs(sin->sin_port));
 
 		if (dotls) {
 			if (tls_accept_socket(server.tls, &ctx, c) == -1)
@@ -339,6 +345,10 @@ client(struct sockaddr_in *sin)
 		err(1, "connect");
 	}
 
+	if (verbosity)
+		printf("connect %s:%hu\n", inet_ntoa(sin->sin_addr),
+		    ntohs(sin->sin_port));
+
 	if (dotls) {
 		if (tls_connect_socket(tls, fd, "localhost") == -1)
 			err(1, "tls_connect_socket: %s", tls_error(tls));
@@ -386,7 +396,8 @@ client(struct sockaddr_in *sin)
 void
 usage(void)
 {
-	fprintf(stderr, "tlsbench [-Dl] [-j jobs] [-w sec] [address] [port]\n");
+	fprintf(stderr,
+	    "tlsbench [-Dlv] [-j jobs] [-w sec] [address] [port]\n");
 }
 
 int
@@ -406,7 +417,7 @@ main(int argc, char *argv[])
 	if ((max_childs = sysconf(_SC_CHILD_MAX)) == -1)
 		err(1, "sysconf(_SC_CHILD_MAX)");
 
-	while ((ch = getopt(argc, argv, "Dj:lw:")) != -1) {
+	while ((ch = getopt(argc, argv, "Dj:lvw:")) != -1) {
 		switch (ch) {
 		case 'D':
 			dotls = false;
@@ -420,6 +431,10 @@ main(int argc, char *argv[])
 
 		case 'l':
 			lflag = true;
+			break;
+
+		case 'v':
+			verbosity++;
 			break;
 
 		case 'w':
