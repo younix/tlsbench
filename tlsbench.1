@@ -25,6 +25,7 @@
 .Op Fl \&Dlv
 .Op Fl j Ar jobs
 .Op Fl w Ar secs
+.Op Fl H Ar httphost
 .Op Ar address
 .Op Ar port
 .Sh DESCRIPTION
@@ -65,6 +66,9 @@ Stop after
 .Ar secs
 seconds.
 Default is 5.
+.It Fl H Ar httphost
+In client mode a minimal HTTP request is send to the server.
+In server mode an HTTP request is expected and answers with a minimal response.
 .El
 .Sh EXIT STATUS
 .Ex -std tlsbench

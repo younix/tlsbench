@@ -181,7 +181,7 @@ generate_ec(uint8_t **key, size_t *key_size, uint8_t **crt, size_t *crt_size)
 }
 
 int
-server(struct sockaddr_in *sin, int jobs)
+server(struct sockaddr_in *sin, int jobs, char *res, size_t ressize)
 {
 	struct server	 server;
 	uint8_t		*crt = NULL;
@@ -245,9 +245,9 @@ server(struct sockaddr_in *sin, int jobs)
 	}
  out:
 	for (;loop;) {
+		char		 buf[BUFSIZ];
 		struct tls	*ctx;
 		ssize_t		 ret;
-		char		 buf[1];
 		socklen_t	 slen = sizeof(*sin);
 
 		if ((c = accept(server.fd, (struct sockaddr *)sin, &slen)) == -1)
@@ -265,10 +265,19 @@ server(struct sockaddr_in *sin, int jobs)
 			if (tls_handshake(ctx) != 0)
 				err(1, "tls_handshake: %s", tls_error(ctx));
 
-#ifdef notyet
-			if (tls_write(ctx, &buf, sizeof buf) != sizeof buf)
-				err(1, "tls_write: %s", tls_error(ctx));
-#endif
+			if (res) {
+				if (tls_read(ctx, &buf, sizeof buf) == -1)
+					err(1, "tls_read: !!%s", tls_error(ctx));
+
+				if (verbosity)
+					puts(buf);
+
+				if (strstr(buf, "\r\n\r\n") == NULL)
+					err(1, "invalid request");
+
+				if (tls_write(ctx, res, ressize) == -1)
+					err(1, "tls_write: %s", tls_error(ctx));
+			}
 
 			if ((ret = tls_close(ctx)) != 0)
 				err(1, "tls_close: %s", tls_error(ctx));
@@ -303,13 +312,13 @@ server(struct sockaddr_in *sin, int jobs)
 }
 
 int
-client(struct sockaddr_in *sin)
+client(struct sockaddr_in *sin, char *req, size_t reqsize)
 {
+	char			 buf[BUFSIZ];
 	struct tls		*tls;
 	struct tls_config	*config;
 	ssize_t			 ret;
 	int			 fd;
-	char			 buf[1];
 
 	/*
 	 * TLS preparation
@@ -356,10 +365,19 @@ client(struct sockaddr_in *sin)
 		if (tls_handshake(tls) != 0)
 			errx(1, "tls_handshake: %s", tls_error(tls));
 
-#ifdef notyet
-		if (tls_read(tls, &buf, sizeof buf) != sizeof buf)
-			err(1, "tls_read: %s", tls_error(tls));
-#endif
+		if (req) {
+			if (tls_write(tls, req, reqsize) == -1)
+				err(1, "tls_write: %s", tls_error(tls));
+
+			if (tls_read(tls, buf, sizeof buf) == -1)
+				err(1, "tls_read: %s", tls_error(tls));
+
+			if (verbosity)
+				puts(buf);
+
+			if (strstr(buf, "\r\n\r\n") == NULL)
+				err(1, "invalid response");
+		}
 
 		if (tls_close(tls) != 0)
 			err(1, "tls_close: %s", tls_error(tls));
@@ -397,7 +415,7 @@ void
 usage(void)
 {
 	fprintf(stderr,
-	    "tlsbench [-Dlv] [-j jobs] [-w sec] [address] [port]\n");
+	    "tlsbench [-Dlv] [-j jobs] [-w sec] [-H http-host] [address] [port]\n");
 }
 
 int
@@ -407,6 +425,10 @@ main(int argc, char *argv[])
 	const char		*errstr;
 	char			*addr = "127.0.0.1";
 	char			*port = "12345";
+	char			*req = NULL;
+	char			*res = NULL;
+	ssize_t			 reqsize;
+	ssize_t			 ressize;
 	size_t			 cnt = 0;
 	unsigned int		 seconds = 5;
 	int			 ch;
@@ -417,10 +439,22 @@ main(int argc, char *argv[])
 	if ((max_childs = sysconf(_SC_CHILD_MAX)) == -1)
 		err(1, "sysconf(_SC_CHILD_MAX)");
 
-	while ((ch = getopt(argc, argv, "Dj:lvw:")) != -1) {
+	while ((ch = getopt(argc, argv, "DH:j:lvw:")) != -1) {
 		switch (ch) {
 		case 'D':
 			dotls = false;
+			break;
+
+		case 'H':
+			reqsize = asprintf(&req,
+			    "GET / HTTP/1.1\r\nHost: %s\r\n\r\n", optarg);
+			if (reqsize == -1)
+				err(1, "asprintf()");
+
+			ressize = asprintf(&res,
+			    "HTTP/1.1 200 OK\r\n\r\n<h1>%s</h1>", optarg);
+			if (ressize == -1)
+				err(1, "asprintf()");
 			break;
 
 		case 'j':
@@ -475,7 +509,7 @@ main(int argc, char *argv[])
 	}
 
 	if (lflag)
-		return server(&sin, jobs);
+		return server(&sin, jobs, res, ressize);
 
 	if (signal(SIGALRM, signal_handler) == SIG_ERR)
 		err(1, "signal(SIGALRM)");
@@ -500,7 +534,7 @@ main(int argc, char *argv[])
 
 			/* count test runs */
 			for (cnt = 0; loop; cnt++)
-				client(&sin);
+				client(&sin, req, reqsize);
 
 			/* write results to master */
 			if (write(fd[i][1], &cnt, sizeof cnt) != sizeof cnt)
