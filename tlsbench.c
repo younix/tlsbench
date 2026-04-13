@@ -312,7 +312,8 @@ server(struct sockaddr_in *sin, int jobs, char *res, size_t ressize)
 }
 
 int
-client(struct sockaddr_in *sin, char *req, size_t reqsize)
+client(struct sockaddr_in *sin, char *req, size_t reqsize, char *proxy,
+    size_t proxysize)
 {
 	char			 buf[BUFSIZ];
 	struct tls		*tls;
@@ -357,6 +358,16 @@ client(struct sockaddr_in *sin, char *req, size_t reqsize)
 	if (verbosity)
 		printf("connect %s:%hu\n", inet_ntoa(sin->sin_addr),
 		    ntohs(sin->sin_port));
+
+	if (proxy) {
+		if (write(fd, proxy, proxysize) == -1)
+			err(1, "write");
+
+		if (read(fd, buf, sizeof buf) == -1)
+			err(1, "read");
+		if (strcmp(buf, "HTTP/1.0 200 Connection established\r\n\r\n") != 0)
+			errx(1, "HTTP responce failure: %s", buf);
+	}
 
 	if (dotls) {
 		if (tls_connect_socket(tls, fd, "localhost") == -1)
@@ -415,7 +426,10 @@ void
 usage(void)
 {
 	fprintf(stderr,
-	    "tlsbench [-Dlv] [-j jobs] [-w sec] [-H http-host] [address] [port]\n");
+	    "tlsbench [-Dlv] [-j jobs] [-w sec] [-H http-host]"
+	    " [-P host:port] [address] [port]\n");
+
+	exit(1);
 }
 
 int
@@ -427,8 +441,10 @@ main(int argc, char *argv[])
 	char			*port = "12345";
 	char			*req = NULL;
 	char			*res = NULL;
+	char			*proxy = NULL;
 	ssize_t			 reqsize;
 	ssize_t			 ressize;
+	ssize_t			 proxysize;
 	size_t			 cnt = 0;
 	unsigned int		 seconds = 5;
 	int			 ch;
@@ -439,7 +455,7 @@ main(int argc, char *argv[])
 	if ((max_childs = sysconf(_SC_CHILD_MAX)) == -1)
 		err(1, "sysconf(_SC_CHILD_MAX)");
 
-	while ((ch = getopt(argc, argv, "DH:j:lvw:")) != -1) {
+	while ((ch = getopt(argc, argv, "DH:j:lP:vw:")) != -1) {
 		switch (ch) {
 		case 'D':
 			dotls = false;
@@ -466,6 +482,22 @@ main(int argc, char *argv[])
 		case 'l':
 			lflag = true;
 			break;
+
+		case 'P': {
+			char *port = optarg;
+			char *host;
+
+			host = strsep(&port, ":");
+			if (*port == '\0')
+				usage();
+
+			proxysize = asprintf(&proxy,
+			    "CONNECT %s:%s HTTP/1.1\r\n"
+			    "Host: %s\r\n\r\n", host, port, host);
+			if (proxysize == -1)
+				err(1, "asprintf()");
+		}
+		break;
 
 		case 'v':
 			verbosity++;
@@ -534,7 +566,7 @@ main(int argc, char *argv[])
 
 			/* count test runs */
 			for (cnt = 0; loop; cnt++)
-				client(&sin, req, reqsize);
+				client(&sin, req, reqsize, proxy, proxysize);
 
 			/* write results to master */
 			if (write(fd[i][1], &cnt, sizeof cnt) != sizeof cnt)
