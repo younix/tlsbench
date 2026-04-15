@@ -26,6 +26,7 @@
 .Op Fl j Ar jobs
 .Op Fl w Ar secs
 .Op Fl H Ar httphost
+.Op Fl P Ar host:port
 .Op Ar address
 .Op Ar port
 .Sh DESCRIPTION
@@ -66,6 +67,8 @@ Stop after
 .Ar secs
 seconds.
 Default is 5.
+.It Fl P Ar host:port
+Performes an unencryptyed HTTP CONNECT request before the TLS handshake.
 .It Fl H Ar httphost
 In client mode a minimal HTTP request is send to the server.
 In server mode an HTTP request is expected and answers with a minimal response.
