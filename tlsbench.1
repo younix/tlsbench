@@ -27,6 +27,7 @@
 .Op Fl w Ar secs
 .Op Fl H Ar httphost
 .Op Fl P Ar host:port
+.Op Fl T Ar keyword
 .Op Ar address
 .Op Ar port
 .Sh DESCRIPTION
@@ -72,6 +73,20 @@ Performes an unencryptyed HTTP CONNECT request before the TLS handshake.
 .It Fl H Ar httphost
 In client mode a minimal HTTP request is send to the server.
 In server mode an HTTP request is expected and answers with a minimal response.
+.It Fl T Ar keyword
+For TLS options,
+.Ar keyword
+specifies a value in the form of a
+.Ar key Ns = Ns Ar value
+pair:
+.Cm ciphers ,
+which allows the supported TLS ciphers to be specified (see
+.Xr tls_config_set_ciphers 3
+for further details) or
+.Cm protocols ,
+which allows the supported TLS protocols to be specified (see
+.Xr tls_config_parse_protocols 3
+for further details).
 .El
 .Sh EXIT STATUS
 .Ex -std tlsbench

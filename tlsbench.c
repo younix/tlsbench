@@ -44,6 +44,8 @@ struct server {
 static bool loop = true;
 static bool dotls = true;
 static int verbosity = 0;
+static char *tls_ciphers = NULL;
+static char *tls_protocols = NULL;
 
 void
 signal_handler(int sig)
@@ -196,6 +198,8 @@ server(struct sockaddr_in *sin, int jobs, char *res, size_t ressize)
 	 * TLS preparation
 	 */
 	if (dotls) {
+		uint32_t protocols = 0;
+
 		if ((server.tls = tls_server()) == NULL)
 			err(1, "tls_server");
 
@@ -210,7 +214,12 @@ server(struct sockaddr_in *sin, int jobs, char *res, size_t ressize)
 		if (tls_config_set_cert_mem(server.config, crt, crt_size) == -1)
 			errx(1, "%s", tls_config_error(server.config));
 
-		tls_config_set_protocols(server.config, TLS_PROTOCOL_TLSv1_2);
+		if (tls_config_parse_protocols(&protocols, tls_protocols) == -1)
+			errx(1, "invalid TLS protocols `%s'", tls_protocols);
+		if (tls_config_set_protocols(server.config, protocols) == -1)
+			errx(1, "%s", tls_config_error(server.config));
+		if (tls_config_set_ciphers(server.config, tls_ciphers) == -1)
+			errx(1, "%s", tls_config_error(server.config));
 
 		if (tls_configure(server.tls, server.config) == -1)
 			err(1, "tls_configure");
@@ -325,6 +334,8 @@ client(struct sockaddr_in *sin, char *req, size_t reqsize, char *proxy,
 	 * TLS preparation
 	 */
 	if (dotls) {
+		uint32_t protocols = 0;
+
 		if ((tls = tls_client()) == NULL)
 			err(1, "tls_server");
 
@@ -335,6 +346,13 @@ client(struct sockaddr_in *sin, char *req, size_t reqsize, char *proxy,
 		tls_config_insecure_noverifyname(config);
 		tls_config_insecure_noverifycert(config);
 		tls_config_set_protocols(config, TLS_PROTOCOL_TLSv1_2);
+
+		if (tls_config_parse_protocols(&protocols, tls_protocols) == -1)
+			errx(1, "invalid TLS protocols `%s'", tls_protocols);
+		if (tls_config_set_protocols(config, protocols) == -1)
+			errx(1, "%s", tls_config_error(config));
+		if (tls_config_set_ciphers(config, tls_ciphers) == -1)
+			errx(1, "%s", tls_config_error(config));
 
 		if (tls_configure(tls, config) == -1)
 			err(1, "tls_configure");
@@ -422,12 +440,45 @@ client(struct sockaddr_in *sin, char *req, size_t reqsize, char *proxy,
 	return 0;
 }
 
+int
+process_tls_opt(char *s)
+{
+	size_t len;
+	char *v;
+
+	const struct tlskeywords {
+		const char       *keyword;
+		char            **value;
+	} *t, tlskeywords[] = {
+		{ "ciphers",    &tls_ciphers },
+		{ "protocols",  &tls_protocols },
+		{ NULL,         NULL },
+	};
+
+	len = strlen(s);
+	if ((v = strchr(s, '=')) != NULL) {
+		len = v - s;
+		v++;
+	}
+
+	for (t = tlskeywords; t->keyword != NULL; t++) {
+		if (strlen(t->keyword) == len &&
+		    strncmp(s, t->keyword, len) == 0) {
+			if (v == NULL)
+				errx(1, "invalid tls value `%s'", s);
+			*t->value = v;
+			return 1;
+		}
+	}
+	return 0;
+}
+
 void
 usage(void)
 {
 	fprintf(stderr,
 	    "tlsbench [-Dlv] [-j jobs] [-w sec] [-H http-host]"
-	    " [-P host:port] [address] [port]\n");
+	    " [-P host:port] [-T keyword] [address] [port]\n");
 
 	exit(1);
 }
@@ -455,7 +506,7 @@ main(int argc, char *argv[])
 	if ((max_childs = sysconf(_SC_CHILD_MAX)) == -1)
 		err(1, "sysconf(_SC_CHILD_MAX)");
 
-	while ((ch = getopt(argc, argv, "DH:j:lP:vw:")) != -1) {
+	while ((ch = getopt(argc, argv, "DH:j:lP:T:vw:")) != -1) {
 		switch (ch) {
 		case 'D':
 			dotls = false;
@@ -498,6 +549,12 @@ main(int argc, char *argv[])
 				err(1, "asprintf()");
 		}
 		break;
+
+		case 'T':
+			if (process_tls_opt(optarg))
+				break;
+			errx(1, "illegal tos value %s", optarg);
+			break;
 
 		case 'v':
 			verbosity++;
